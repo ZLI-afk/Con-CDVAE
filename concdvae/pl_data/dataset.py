@@ -51,13 +51,22 @@ class CrystDataset(Dataset):
             self.ari = AtomCustomJSONInitializer(atom_init_file)
             for i in range(len(self.cached_data)):
                 crystal = Structure.from_str(self.cached_data[i]['cif'], fmt="cif")
-
+                # add formula fingerprint
                 atom_fea = np.vstack([self.ari.get_atom_fea(crystal[i].specie.number)
                                       for i in range(len(crystal))])
                 atom_fea = torch.Tensor(atom_fea)
                 atom_fea = torch.mean(atom_fea, dim=0)
                 atom_fea = atom_fea.reshape(1, 92)
                 self.cached_data[i].update({'formula':atom_fea})
+                # add elemental symbol system fingerprint
+                elem_fea = np.vstack([self.ari.get_atom_fea(crystal.elements[i].number) 
+                                      for i in range(len(crystal.elements))])
+                elem_fea = torch.Tensor(elem_fea)
+                elem_fea = torch.mean(elem_fea, dim=0)
+                elem_fea = elem_fea.reshape(1, 92)
+                self.cached_data[i].update({'elements':elem_fea})
+
+
         else:
             self.ari = None
 
