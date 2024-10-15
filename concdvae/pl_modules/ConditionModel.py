@@ -181,6 +181,7 @@ class VectorialConditionEmbedding(nn.Module):
 
         super(VectorialConditionEmbedding, self).__init__()
         self.condition_name = condition_name
+
         # initialize fully connected network
         self.dense_net = build_mlp(
             in_dim=n_in,

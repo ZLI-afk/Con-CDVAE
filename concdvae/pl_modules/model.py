@@ -181,7 +181,8 @@ class CDVAE(nn.Module):
             loss = con_pre(batch, z)
             pre_losses.update({con_pre.condition_name+'_loss': loss})
 
-
+        # concatenate condition embeddings and the cdvae latent embeddings
+        # zip the concatenated embeddings to original size of cdvae latent space via mlp
         z_nograd = z.detach()
         z_nograd = torch.cat((z_nograd,condition_emb),dim=1)
         z_nograd_con = self.z_condition(z_nograd)
@@ -189,7 +190,7 @@ class CDVAE(nn.Module):
         z_con = torch.cat((z,condition_emb),dim=1)
         z_con = self.z_condition(z_con)
 
-        
+        # predict static properties do not change during decoding (i.e., num_atoms, lattice)
         (pred_num_atoms, pred_lengths_and_angles, pred_lengths, pred_angles,
          pred_composition_per_atom) = self.decode_stats(
             z_con, batch.num_atoms, batch.lengths, batch.angles, teacher_forcing)
@@ -225,6 +226,7 @@ class CDVAE(nn.Module):
         noisy_frac_coords = cart_to_frac_coords(
             cart_coords, pred_lengths, pred_angles, batch.num_atoms)
 
+        # ? need explaination for this part ?
         time_emb = self.time_mlp(noise_level)
         z_nograd_con_time = torch.cat((z_nograd_con, time_emb), dim=1)
 
@@ -233,13 +235,15 @@ class CDVAE(nn.Module):
 
 
         # compute loss.
+        # static loss for AGG network of cdvae
         num_atom_loss = self.num_atom_loss(pred_num_atoms, batch) #cross
         lattice_loss = self.lattice_loss(pred_lengths_and_angles, batch) #MSE
         composition_loss = self.composition_loss(
             pred_composition_per_atom, batch.atom_types, batch)  #cross
+        # loss for PGNN decoder
         coord_loss = self.coord_loss(
-            pred_cart_coord_diff, noisy_frac_coords, used_sigmas_per_atom, batch)  #MSE？？ 和加入的误差对比
-        type_loss = self.type_loss(pred_atom_types, batch.atom_types,  #cross  和真实对比？？？
+            pred_cart_coord_diff, noisy_frac_coords, used_sigmas_per_atom, batch)  #MSE
+        type_loss = self.type_loss(pred_atom_types, batch.atom_types,  #cross
                                    used_type_sigmas_per_atom, batch)
 
         kld_loss = self.kld_loss(mu, log_var)
@@ -335,7 +339,7 @@ class CDVAE(nn.Module):
                                  used_sigmas_per_atom[:, None] ** 2
         pred_cart_coord_diff = pred_cart_coord_diff / \
                                used_sigmas_per_atom[:, None]
-
+        # evaluate the similarity of difference of noisy coords with both target (original) and predicted coords to define loss.
         loss_per_atom = torch.sum(
             (target_cart_coord_diff - pred_cart_coord_diff) ** 2, dim=1)
 
