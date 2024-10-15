@@ -22,7 +22,7 @@ from torch_geometric.loader import DataLoader
 import torch.nn.functional as F
 
 from eval_utils import load_model
-from condition_diff_z import condition_diff_z
+from condition_diff_z import ConditionDiffZ
 from concdvae.common.data_utils import GaussianDistance
 from concdvae.pl_data.datamodule import worker_init_fn
 from concdvae.pl_data.dataset import AtomCustomJSONInitializer, formula2atomnums
@@ -41,8 +41,8 @@ def generation(model, conz_model, ld_kwargs, num_batches_to_sample, num_samples_
         real_batch_size = int(batch_size / down_sample)
     else:
         real_batch_size = int(batch_size)
-    condition_emb = model.condition_model(prop_dict)
 
+    condition_emb = model.condition_model(prop_dict)
     condition_emb = condition_emb.repeat(real_batch_size, 1).float()
 
     model.eval()
@@ -197,7 +197,7 @@ def main(args):
                                 use_one=args.use_one,
                                 data_root=cfg.data.root_path,
                                 )
-    conz_model = condition_diff_z(cfg, ld_kwargs_conz)
+    conz_model = ConditionDiffZ(cfg, ld_kwargs_conz)
     print(conz_model)
     model_state_dict = checkpoint['model']
     conz_model.load_state_dict(model_state_dict)
@@ -244,7 +244,18 @@ def main(args):
                     prop_dict.update({'formula':atom_fea.cuda()})
                 else:
                     prop_dict.update({'formula': atom_fea})
-
+            elif args_conz.fullfea == 1 and 'elements' in prop_data.keys():
+                atom_list = formula2atomnums(prop_data['elements'][i_prop])
+                elem_list = list(set(atom_list))
+                elem_fea = np.vstack([ari.get_atom_fea(elem_list[k])
+                                      for k in range(len(elem_list))])
+                elem_fea = torch.Tensor(elem_fea)
+                elem_fea = torch.mean(elem_fea, dim=0)
+                elem_fea = elem_fea.reshape(1, 92)
+                if torch.cuda.is_available():
+                    prop_dict.update({'elements':elem_fea.cuda()})
+                else:
+                    prop_dict.update({'elements': elem_fea})
 
 
             (frac_coords, num_atoms, atom_types, lengths, angles,

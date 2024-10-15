@@ -47,9 +47,9 @@ class SinusoidalPositionEmbeddings(nn.Module):
         # TODO: Double check the ordering here
         return embeddings
 
-class condition_diff_z(nn.Module):
+class ConditionDiffZ(nn.Module):
     def __init__(self, cfg, ld_kwargs) -> None:
-        super(condition_diff_z, self).__init__()
+        super(ConditionDiffZ, self).__init__()
         self.cfg = cfg
         self.ld_kwargs = ld_kwargs
 
@@ -372,6 +372,7 @@ def main(args):
 
         with open(condition_root, 'r') as file:
             new_condition = yaml.safe_load(file)
+
     else:
         print('use default feature')
         new_condition = None
@@ -397,7 +398,7 @@ def main(args):
                                 new_condition=new_condition,
                                 )
 
-    conz_model = condition_diff_z(cfg, ld_kwargs)
+    conz_model = ConditionDiffZ(cfg, ld_kwargs)
 
 
     model = hydra.utils.instantiate(
