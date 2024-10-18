@@ -81,3 +81,37 @@ class ClassConditionPredict(nn.Module):
     def property_loss(self, inputs, predict):
         true = torch.Tensor(inputs[self.condition_name]).long()
         return self.criterion(predict,true)
+    
+
+class VectorialConditionPredict(nn.Module):
+    def __init__(
+            self,
+            condition_name: str,
+            latent_dim: int,
+            hidden_dim: int,
+            out_dim: int,
+            n_layers: int,
+            drop: float = -1,
+    ):
+        super(VectorialConditionPredict, self).__init__()
+        self.condition_name = condition_name
+        self.latent_dim = latent_dim
+        self.hidden_dim = hidden_dim
+        self.out_dim = out_dim
+        self.n_layers = n_layers
+        self.drop = drop
+
+        self.mlp = build_mlp(in_dim=self.latent_dim,
+                             hidden_dim=self.hidden_dim,
+                             fc_num_layers=self.n_layers,
+                             out_dim=self.out_dim,
+                             drop=self.drop)
+    
+    def forward(self, inputs, z):
+        predict = self.mlp(z)
+        loss = self.property_loss(inputs, predict)
+        return loss
+    
+    def property_loss(self, inputs, predict):
+        true = torch.Tensor(inputs[self.condition_name]).float()
+        return F.mse_loss(predict, true)
