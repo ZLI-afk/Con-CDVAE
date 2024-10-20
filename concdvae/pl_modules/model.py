@@ -55,15 +55,16 @@ class CDVAE(nn.Module):
         MyDict = namedtuple("MyDict", kwargs.keys())
         self.hparams = MyDict(**kwargs)
 
-        conditions_predict = []
-        self.conditions_name = []
-        for pre in self.hparams.conditionpre.condition_predict:
-            conditions_predict.append(hydra.utils.instantiate(pre, _recursive_=False))
-            self.conditions_name.append(pre.condition_name)
-        self.conditions_predict = nn.ModuleList(conditions_predict)
+        if self.hparams.train_mode != 'pretrain':
+            conditions_predict = []
+            self.conditions_name = []
+            for pre in self.hparams.conditionpre.condition_predict:
+                conditions_predict.append(hydra.utils.instantiate(pre, _recursive_=False))
+                self.conditions_name.append(pre.condition_name)
+            self.conditions_predict = nn.ModuleList(conditions_predict)
 
 
-        self.condition_model = hydra.utils.instantiate(self.hparams.conditionmodel, _recursive_=False)
+            self.condition_model = hydra.utils.instantiate(self.hparams.conditionmodel, _recursive_=False)
 
         self.z_condition = build_mlp(self.hparams.latent_dim+self.hparams.conditionmodel.n_features,
                                     self.hparams.hidden_dim,
@@ -170,25 +171,29 @@ class CDVAE(nn.Module):
 
 
     def forward(self, batch, teacher_forcing, training):
-
-        condition_emb = self.condition_model(batch)
-
         # hacky way to resolve the NaN issue. Will need more careful debugging later.
         mu, log_var, z = self.encode(batch)
 
-        pre_losses = {}
-        for con_pre in self.conditions_predict:
-            loss = con_pre(batch, z)
-            pre_losses.update({con_pre.condition_name+'_loss': loss})
+        if self.hparams.train_mode == 'pretrain':
+            z_nograd = z.detach()
+            z_nograd_con = z_nograd
 
-        # concatenate condition embeddings and the cdvae latent embeddings
-        # zip the concatenated embeddings to original size of cdvae latent space via mlp
-        z_nograd = z.detach()
-        z_nograd = torch.cat((z_nograd,condition_emb),dim=1)
-        z_nograd_con = self.z_condition(z_nograd)
+            z_con = z
+        else:
+            condition_emb = self.condition_model(batch)
+            pre_losses = {}
+            for con_pre in self.conditions_predict:
+                loss = con_pre(batch, z)
+                pre_losses.update({con_pre.condition_name+'_loss': loss})
 
-        z_con = torch.cat((z,condition_emb),dim=1)
-        z_con = self.z_condition(z_con)
+            # concatenate condition embeddings and the cdvae latent embeddings
+            # zip the concatenated embeddings to original size of cdvae latent space via mlp
+            z_nograd = z.detach()
+            z_nograd = torch.cat((z_nograd,condition_emb),dim=1)
+            z_nograd_con = self.z_condition(z_nograd)
+
+            z_con = torch.cat((z,condition_emb),dim=1)
+            z_con = self.z_condition(z_con)
 
         # predict static properties do not change during decoding (i.e., num_atoms, lattice)
         (pred_num_atoms, pred_lengths_and_angles, pred_lengths, pred_angles,
@@ -269,12 +274,13 @@ class CDVAE(nn.Module):
             'rand_atom_types': rand_atom_types,
             'z': z,
         }
-        output.update(pre_losses)
-        predict_loss = pre_losses[self.conditions_name[0]+'_loss']
-        for con_name in self.conditions_name:
-            if con_name != self.conditions_name[0]:
-                predict_loss += pre_losses[con_name+'_loss']
-        output.update({'predict_loss': predict_loss})
+        if self.hparams.train_mode != 'pretrain':
+            output.update(pre_losses)
+            predict_loss = pre_losses[self.conditions_name[0]+'_loss']
+            for con_name in self.conditions_name:
+                if con_name != self.conditions_name[0]:
+                    predict_loss += pre_losses[con_name+'_loss']
+            output.update({'predict_loss': predict_loss})
 
         return output
 
@@ -368,30 +374,53 @@ class CDVAE(nn.Module):
         type_loss = outputs['type_loss']
         kld_loss = outputs['kld_loss']
         composition_loss = outputs['composition_loss']
-        predict_loss = outputs['predict_loss']
-        if not self.hparams.predict_property:
-            predict_loss = predict_loss * 0.0
+        if self.hparams.train_mode != 'pretrain':
+            predict_loss = outputs['predict_loss']
+            if not self.hparams.predict_property:
+                predict_loss = predict_loss * 0.0
 
-        loss = (
-                self.hparams.cost_natom * num_atom_loss +
-                self.hparams.cost_lattice * lattice_loss +
-                self.hparams.cost_coord * coord_loss +
-                self.hparams.cost_type * type_loss +
-                self.hparams.beta * kld_loss +
-                self.hparams.cost_composition * composition_loss +
-                self.hparams.cost_property * predict_loss)
+            loss = (
+                    self.hparams.cost_natom * num_atom_loss +
+                    self.hparams.cost_lattice * lattice_loss +
+                    self.hparams.cost_coord * coord_loss +
+                    self.hparams.cost_type * type_loss +
+                    self.hparams.beta * kld_loss +
+                    self.hparams.cost_composition * composition_loss +
+                    self.hparams.cost_property * predict_loss
+                    )
 
 
-        log_dict = {
-            f'{prefix}_loss': loss,
-            f'{prefix}_natom_loss': num_atom_loss,
-            f'{prefix}_lattice_loss': lattice_loss,
-            f'{prefix}_coord_loss': coord_loss,
-            f'{prefix}_type_loss': type_loss,
-            f'{prefix}_kld_loss': kld_loss,
-            f'{prefix}_composition_loss': composition_loss,
-            f'{prefix}_predict_loss': predict_loss,
-        }
+            log_dict = {
+                f'{prefix}_loss': loss,
+                f'{prefix}_natom_loss': num_atom_loss,
+                f'{prefix}_lattice_loss': lattice_loss,
+                f'{prefix}_coord_loss': coord_loss,
+                f'{prefix}_type_loss': type_loss,
+                f'{prefix}_kld_loss': kld_loss,
+                f'{prefix}_composition_loss': composition_loss,
+                f'{prefix}_predict_loss': predict_loss,
+            }
+        else:
+            loss = (
+                    self.hparams.cost_natom * num_atom_loss +
+                    self.hparams.cost_lattice * lattice_loss +
+                    self.hparams.cost_coord * coord_loss +
+                    self.hparams.cost_type * type_loss +
+                    self.hparams.beta * kld_loss +
+                    self.hparams.cost_composition * composition_loss
+                    )
+
+
+            log_dict = {
+                f'{prefix}_loss': loss,
+                f'{prefix}_natom_loss': num_atom_loss,
+                f'{prefix}_lattice_loss': lattice_loss,
+                f'{prefix}_coord_loss': coord_loss,
+                f'{prefix}_type_loss': type_loss,
+                f'{prefix}_kld_loss': kld_loss,
+                f'{prefix}_composition_loss': composition_loss
+            }
+
 
         if prefix != 'train':
             # validation/test loss only has coord and type

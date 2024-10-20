@@ -1,0 +1,10 @@
+_target_: concdvae.pl_modules.ConditionModel.ConditioningModule
+n_features: 128
+n_layers: 2
+condition_embeddings:
+
+  - _target_: concdvae.pl_modules.ConditionModel.VectorialConditionEmbedding
+    condition_name: elements
+    n_in: 92
+    n_features: 64
+    n_layers: 3

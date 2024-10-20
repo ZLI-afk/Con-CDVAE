@@ -53,9 +53,9 @@ def run(cfg: DictConfig) -> None:
     param_statistics(model)
 
     best_loss_old = None
-    if(cfg.train.PT_train.start_epochs>1):
-        filename = 'model_' + cfg.expname + '.pth'
-        model_root = Path(hydra_dir) / filename
+    filename = 'model_' + cfg.expname + '.pth'
+    model_root = Path(hydra_dir) / filename
+    if(cfg.train.PT_train.start_epochs>1) and cfg.model.train_mode != 'finetune':
         if os.path.exists(model_root):
             checkpoint = torch.load(model_root, map_location=torch.device('cpu'))
             model_state_dict = checkpoint['model']
@@ -64,6 +64,12 @@ def run(cfg: DictConfig) -> None:
             best_loss_old = checkpoint['val_loss']
 
             print('use old model with loss=',best_loss_old,',and epoch = ',cfg.train.PT_train.start_epochs)
+    elif cfg.model.train_mode == 'finetune':
+        if os.path.exists(model_root):
+            checkpoint = torch.load(model_root, map_location=torch.device('cpu'))
+            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"Total number of trainable parameters: {trainable_params}")
+            model.load_state_dict(checkpoint['model'], strict=False)
 
 
     model.lattice_scaler = datamodule.lattice_scaler.copy()

@@ -19,6 +19,8 @@ def train(cfg, model, datamodule, optimizer, scheduler, hydra_dir, best_loss_old
     predict_mses_epoch = []
     if best_loss_old != None:
         best_loss = best_loss_old
+    if cfg.model.train_mode == 'finetune':
+        cfg.expname += '_finetune'
 
     for epoch in range(cfg.train.PT_train.start_epochs, cfg.train.PT_train.max_epochs):
         sys.stdout.flush()
@@ -65,9 +67,10 @@ def train(cfg, model, datamodule, optimizer, scheduler, hydra_dir, best_loss_old
                         'angles_mae_epoch' : angles_mae_epoch,
                         'volumes_mard_epoch' : volumes_mard_epoch,
                         'type_accuracy_epoch' : type_accuracy_epoch,
-                        'predict_mses_epoch' : predict_mses_epoch,
-                        'trainpre_loss_epoch': trainpre_loss_epoch,
                     }
+                    if cfg.model.train_mode != 'pretrain':
+                        loss_dict['predict_mses_epoch'] = predict_mses_epoch
+                        loss_dict['trainpre_loss_epoch'] = trainpre_loss_epoch
                     loss_df = pd.DataFrame(loss_dict)
                     excel_file = hydra_dir / 'loss_file.xlsx'
                     loss_df.to_excel(excel_file, index=False)
@@ -91,9 +94,10 @@ def train(cfg, model, datamodule, optimizer, scheduler, hydra_dir, best_loss_old
                     'angles_mae_epoch' : angles_mae_epoch,
                     'volumes_mard_epoch' : volumes_mard_epoch,
                     'type_accuracy_epoch' : type_accuracy_epoch,
-                    'predict_mses_epoch' : predict_mses_epoch,
-                    'trainpre_loss_epoch': trainpre_loss_epoch,
                 }
+                if cfg.model.train_mode != 'pretrain':
+                    loss_dict['predict_mses_epoch'] = predict_mses_epoch
+                    loss_dict['trainpre_loss_epoch'] = trainpre_loss_epoch
                 loss_df = pd.DataFrame(loss_dict)
                 excel_file = hydra_dir / 'loss_file.xlsx'
                 loss_df.to_excel(excel_file, index=False)
@@ -107,14 +111,15 @@ def train(cfg, model, datamodule, optimizer, scheduler, hydra_dir, best_loss_old
                 torch.save(data, path)
 
         train_loss_epoch.append(train_loss.avg.cpu().detach().numpy())
-        trainpre_loss_epoch.append(trainpre_loss.avg.cpu().detach().numpy())
         val_loss_epoch.append(val_losses[0].avg.cpu().detach().numpy())
         num_atom_accuracy_epoch.append(num_atom_accuracys[0].avg.cpu().detach().numpy())
         lengths_mard_epoch.append(lengths_mards[0].avg.cpu().detach().numpy())
         angles_mae_epoch.append(angles_maes[0].avg.cpu().detach().numpy())
         volumes_mard_epoch.append(volumes_mards[0].avg.cpu().detach().numpy())
         type_accuracy_epoch.append(type_accuracys[0].avg.cpu().detach().numpy())
-        predict_mses_epoch.append(predict_mses[0].avg.cpu().detach().numpy())
+        if cfg.model.train_mode != 'pretrain':
+            trainpre_loss_epoch.append(trainpre_loss.avg.cpu().detach().numpy())
+            predict_mses_epoch.append(predict_mses[0].avg.cpu().detach().numpy())
 
 
     test_losses = val_step(cfg, model, datamodule.val_dataloaders, optimizer, epoch, prefix='test')
@@ -131,9 +136,10 @@ def train(cfg, model, datamodule, optimizer, scheduler, hydra_dir, best_loss_old
                 'angles_mae_epoch' : angles_mae_epoch,
                 'volumes_mard_epoch' : volumes_mard_epoch,
                 'type_accuracy_epoch' : type_accuracy_epoch,
-                'predict_mses_epoch' : predict_mses_epoch,
-                'trainpre_loss_epoch': trainpre_loss_epoch,
             }
+            if cfg.model.train_mode != 'pretrain':
+                loss_dict['predict_mses_epoch'] = predict_mses_epoch
+                loss_dict['trainpre_loss_epoch'] = trainpre_loss_epoch
             loss_df = pd.DataFrame(loss_dict)
             excel_file = hydra_dir / 'loss_file.xlsx'
             loss_df.to_excel(excel_file, index=False)
@@ -142,14 +148,15 @@ def train(cfg, model, datamodule, optimizer, scheduler, hydra_dir, best_loss_old
         loss_dict = {
             'train_loss_epoch': train_loss_epoch,
             'val_loss_epoch': val_loss_epoch,
-            'num_atom_accuracy_epoch': num_atom_accuracy_epoch,
-            'lengths_mard_epoch': lengths_mard_epoch,
-            'angles_mae_epoch': angles_mae_epoch,
-            'volumes_mard_epoch': volumes_mard_epoch,
-            'type_accuracy_epoch': type_accuracy_epoch,
-            'predict_mses_epoch': predict_mses_epoch,
-            'trainpre_loss_epoch': trainpre_loss_epoch,
+            'num_atom_accuracy_epoch' : num_atom_accuracy_epoch,
+            'lengths_mard_epoch' : lengths_mard_epoch,
+            'angles_mae_epoch' : angles_mae_epoch,
+            'volumes_mard_epoch' : volumes_mard_epoch,
+            'type_accuracy_epoch' : type_accuracy_epoch,
         }
+        if cfg.model.train_mode != 'pretrain':
+            loss_dict['predict_mses_epoch'] = predict_mses_epoch
+            loss_dict['trainpre_loss_epoch'] = trainpre_loss_epoch
         loss_df = pd.DataFrame(loss_dict)
         excel_file = hydra_dir / 'loss_file.xlsx'
         loss_df.to_excel(excel_file, index=False)
@@ -203,7 +210,8 @@ def train_step(cfg, model, train_loader, optimizer, epoch):
         kld_loss.update(outputs['kld_loss'].data.cpu(), outputs['z'].size(0))
         composition_loss.update(outputs['composition_loss'].data.cpu(), outputs['z'].size(0))
         train_loss.update(loss, outputs['z'].size(0))
-        trainpre_loss.update(outputs['predict_loss'].data.cpu(), outputs['z'].size(0))
+        if cfg.model.train_mode != 'pretrain':
+            trainpre_loss.update(outputs['predict_loss'].data.cpu(), outputs['z'].size(0))
 
         batch_time.update(time.time() - end)
         end = time.time()
@@ -260,7 +268,8 @@ def val_step(cfg, model, val_loaders, optimizer, epoch, prefix='val'):
             angles_mae.update(log_dict[f'{prefix}_angles_mae'].data.cpu(), outputs['z'].size(0))
             volumes_mard.update(log_dict[f'{prefix}_volumes_mard'].data.cpu(), outputs['z'].size(0))
             type_accuracy.update(log_dict[f'{prefix}_type_accuracy'].data.cpu(), outputs['z'].size(0))
-            predict_mse.update(log_dict[f'{prefix}_predict_loss'].data.cpu(), outputs['z'].size(0))
+            if cfg.model.train_mode != 'pretrain':
+                predict_mse.update(log_dict[f'{prefix}_predict_loss'].data.cpu(), outputs['z'].size(0))
 
             batch_time.update(time.time() - end)
             end = time.time()

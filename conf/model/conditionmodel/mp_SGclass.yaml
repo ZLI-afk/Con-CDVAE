@@ -8,4 +8,17 @@ condition_embeddings:
     n_emb: 64
     n_features: 64
     n_layers: 3
+  
+  - _target_: concdvae.pl_modules.ConditionModel.ScalarConditionEmbedding
+    condition_name: formation
+    condition_min: -6.0
+    condition_max: 1.0
+    grid_spacing: 0.5
+    n_features: 64
+    n_layers: 3
 
+  #- _target_: concdvae.pl_modules.ConditionModel.VectorialConditionEmbedding
+  #  condition_name: elements
+  #  n_in: 92
+  #  n_features: 64
+  #  n_layers: 3

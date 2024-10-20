@@ -24,7 +24,7 @@ accelerator: 'cpu'
 defaults:
   - data: default
   - logging: default
-  - model: vae
+  - model: concdvae
   - optim: default
   - train: default
 #    Decomment this parameter to get parallel job running
