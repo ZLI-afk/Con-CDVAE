@@ -66,15 +66,15 @@ class CDVAE(nn.Module):
 
             self.condition_model = hydra.utils.instantiate(self.hparams.conditionmodel, _recursive_=False)
 
-        self.z_condition = build_mlp(self.hparams.latent_dim+self.hparams.conditionmodel.n_features,
+            self.z_condition = build_mlp(self.hparams.latent_dim+self.hparams.conditionmodel.n_features,
                                     self.hparams.hidden_dim,
                                     self.hparams.fc_num_layers,
                                     self.hparams.latent_dim)
 
-        self.time_mlp = nn.Sequential(
-            SinusoidalPositionEmbeddings(self.hparams.time_emb_dim),
-            nn.Linear(self.hparams.time_emb_dim, self.hparams.time_emb_dim), nn.ReLU()
-        )
+        #self.time_mlp = nn.Sequential(
+        #    SinusoidalPositionEmbeddings(self.hparams.time_emb_dim),
+        #    nn.Linear(self.hparams.time_emb_dim, self.hparams.time_emb_dim), nn.ReLU()
+        #)
 
 
         self.encoder = hydra.utils.instantiate(
@@ -231,14 +231,17 @@ class CDVAE(nn.Module):
         noisy_frac_coords = cart_to_frac_coords(
             cart_coords, pred_lengths, pred_angles, batch.num_atoms)
 
-        # ? need explaination for this part ?
-        time_emb = self.time_mlp(noise_level)
-        z_nograd_con_time = torch.cat((z_nograd_con, time_emb), dim=1)
-
-        pred_cart_coord_diff, pred_atom_types = self.decoder(
-            z_nograd_con_time, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
-
-
+        # if not pretrain, use property-predictor loss rather than decoder loss for BP weights update of encoder
+        #time_emb = self.time_mlp(noise_level)
+        if self.hparams.train_mode == 'pretrain':
+            #z_con_time = torch.cat((z_con, time_emb), dim=1)
+            pred_cart_coord_diff, pred_atom_types = self.decoder(
+                z_con, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
+        else:
+            #z_nograd_con_time = torch.cat((z_nograd_con, time_emb), dim=1)
+            pred_cart_coord_diff, pred_atom_types = self.decoder(
+                z_nograd_con, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
+            
         # compute loss.
         # static loss for AGG network of cdvae
         num_atom_loss = self.num_atom_loss(pred_num_atoms, batch) #cross

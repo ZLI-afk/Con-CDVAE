@@ -4,7 +4,7 @@
 import torch
 import torch.nn as nn
 from torch_scatter import scatter
-# from torch_geometric.nn.acts import swish ##从geometric中调用好像有问题，自己写了一个函数
+#from torch_geometric.nn import swish ##从geometric中调用好像有问题，自己写了一个函数
 from torch_geometric.nn.inits import glorot_orthogonal
 from torch_geometric.nn.models.dimenet import (
     BesselBasisLayer,

@@ -101,6 +101,7 @@ class CrystDataset(Dataset):
 
         if self.ari != None:
             data.update({'formula': self.cached_data[index]['formula']})
+            data.update({'elements': self.cached_data[index]['elements']})
 
         return data
 

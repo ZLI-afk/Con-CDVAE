@@ -25,6 +25,7 @@ class GemNetTDecoder(nn.Module):
         time_emb_dim=64,
         radius=6.,
         scale_file=None,
+        train_mode="one-shot"
     ):
         super(GemNetTDecoder, self).__init__()
         self.cutoff = radius
@@ -32,7 +33,8 @@ class GemNetTDecoder(nn.Module):
 
         self.gemnet = GemNetT(
             num_targets=1,
-            latent_dim=latent_dim+time_emb_dim, #!!!!1
+            #latent_dim=latent_dim+time_emb_dim, #!!!!1
+            latent_dim=latent_dim,
             emb_size_atom=hidden_dim,
             emb_size_edge=hidden_dim,
             regress_forces=True,
