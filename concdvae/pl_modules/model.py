@@ -71,10 +71,10 @@ class CDVAE(nn.Module):
                                     self.hparams.fc_num_layers,
                                     self.hparams.latent_dim)
 
-        #self.time_mlp = nn.Sequential(
-        #    SinusoidalPositionEmbeddings(self.hparams.time_emb_dim),
-        #    nn.Linear(self.hparams.time_emb_dim, self.hparams.time_emb_dim), nn.ReLU()
-        #)
+        self.time_mlp = nn.Sequential(
+            SinusoidalPositionEmbeddings(self.hparams.time_emb_dim),
+            nn.Linear(self.hparams.time_emb_dim, self.hparams.time_emb_dim), nn.ReLU()
+        )
 
 
         self.encoder = hydra.utils.instantiate(
@@ -207,7 +207,10 @@ class CDVAE(nn.Module):
         used_sigmas_per_atom = self.sigmas[noise_level].repeat_interleave(
             batch.num_atoms, dim=0)
 
-        type_noise_level = noise_level
+        #type_noise_level = noise_level
+        type_noise_level = torch.randint(0, self.type_sigmas.size(0),
+                                         (batch.num_atoms.size(0),),
+                                         device=self.device)
         used_type_sigmas_per_atom = (
             self.type_sigmas[type_noise_level].repeat_interleave(
                 batch.num_atoms, dim=0))
@@ -218,8 +221,15 @@ class CDVAE(nn.Module):
         atom_type_probs = (
                 F.one_hot(batch.atom_types - 1, num_classes=MAX_ATOMIC_NUM) +
                 pred_composition_probs * used_type_sigmas_per_atom[:, None])
-        rand_atom_types = torch.multinomial(
-            atom_type_probs, num_samples=1).squeeze(1) + 1
+        try:
+            rand_atom_types = torch.multinomial(
+                atom_type_probs, num_samples=1).squeeze(1) + 1
+        except RuntimeError:
+            print('pred_composition_per_atom:', pred_composition_per_atom.detach())
+            print('atom_type_probs:', atom_type_probs)
+            print('pred_composition_probs:', pred_composition_probs)
+            raise RuntimeError('Error in multinomial sampling.')
+
 
         # add noise to the cart coords
         cart_noises_per_atom = (
@@ -232,15 +242,15 @@ class CDVAE(nn.Module):
             cart_coords, pred_lengths, pred_angles, batch.num_atoms)
 
         # if not pretrain, use property-predictor loss rather than decoder loss for BP weights update of encoder
-        #time_emb = self.time_mlp(noise_level)
+        time_emb = self.time_mlp(noise_level)
         if self.hparams.train_mode == 'pretrain':
-            #z_con_time = torch.cat((z_con, time_emb), dim=1)
+            z_con_time = torch.cat((z_con, time_emb), dim=1)
             pred_cart_coord_diff, pred_atom_types = self.decoder(
-                z_con, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
+                z_con_time, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
         else:
-            #z_nograd_con_time = torch.cat((z_nograd_con, time_emb), dim=1)
+            z_nograd_con_time = torch.cat((z_nograd_con, time_emb), dim=1)
             pred_cart_coord_diff, pred_atom_types = self.decoder(
-                z_nograd_con, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
+                z_nograd_con_time, noisy_frac_coords, rand_atom_types, batch.num_atoms, pred_lengths, pred_angles)
             
         # compute loss.
         # static loss for AGG network of cdvae

@@ -33,8 +33,8 @@ class GemNetTDecoder(nn.Module):
 
         self.gemnet = GemNetT(
             num_targets=1,
-            #latent_dim=latent_dim+time_emb_dim, #!!!!1
-            latent_dim=latent_dim,
+            latent_dim=latent_dim+time_emb_dim, #!!!!1
+            #latent_dim=latent_dim,
             emb_size_atom=hidden_dim,
             emb_size_edge=hidden_dim,
             regress_forces=True,
